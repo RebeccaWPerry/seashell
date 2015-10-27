@@ -10,10 +10,8 @@
  # TODO: make radius independent from padding
  # TODO: how do the results depend on choice of radius, searchpoints, 
         # and padding?
- # TODO: linking in 3D, more clustering algorithms?
+ # TODO: is oval the best shape? (see square example)
  # TODO: read about convex hulls
- # TODO: include the power of the point-- prominence, how many contibuted to
- #       vote for that point
  
 from skimage import data, io
 from skimage.filter import threshold_otsu, sobel
@@ -68,15 +66,15 @@ def locate_bumps(image, radius=2, searchpoints=1000, display=False):
 
     Keyword arguments:
         radius (float): size of the oval around the object to calculate minimum 
-        distances from. In units of 1/2 major and minor axes.
+        distances from. In units of 1/2 the length and width of cropped image.
         
         searchpoints (int): number of points to calculate distances from 
         (default 1000)
                 
-        display (bool): set to True to see plots of the results (defalut False)
+        display (bool): set to True to see plots of results (defalut False)
 
     Returns:
-        2D ndarray listing coordinates (row, col) of bumps'''
+        2D ndarray listing coordinates (row, col, strength) of bumps'''
     #prepare image: load, threshold, crop, and find edges
     if type(image) == str:
         image = io.imread(image)
@@ -96,9 +94,9 @@ def locate_bumps(image, radius=2, searchpoints=1000, display=False):
 
     #find bumps using minimum distance to a bounding ellipse
     thetas = np.linspace(0,2*pi,searchpoints)
-    ringpoints = np.array([center[1]+radius*center[1]*np.cos(thetas), 
-                           center[0]+radius*center[0]*np.sin(thetas)]).T
-    d = spatial.distance.cdist(ringpoints,edgepixs)
+    ringpoints = np.array([center[0]+radius*center[0]*np.cos(thetas), 
+                           center[1]+radius*center[1]*np.sin(thetas)]).T
+    d = spatial.distance.cdist(ringpoints,edgepixs*1.0)
     votes = edgepixs[np.argmin(d,1)] #each ringpoint votes once
 
 
@@ -121,7 +119,6 @@ def locate_bumps(image, radius=2, searchpoints=1000, display=False):
         ed = array(where(edges)).T
         t = spatial.distance.cdist(array([ed[:,0],ed[:,1]]).T,final[:,0:2])
         dist_from_border = amin(t,0)
-        print dist_from_border
         n = max(dist_from_border)
         num_clust1 += 1
     # end of reducing candidates
@@ -135,11 +132,16 @@ def locate_bumps(image, radius=2, searchpoints=1000, display=False):
 
         plt.figure(figsize=[20,6])
 
-        plt.subplot(1,3,1)
+        plt.subplot(1,4,1)
         io.imshow(image)
         plt.title('Raw Data')
 
-        plt.subplot(1,3,2)
+        plt.subplot(1,4,2)
+        io.imshow(binary)
+        plt.plot(edgepixs[:,1],edgepixs[:,0],'g.')
+        plt.plot(ringpoints[:,1],ringpoints[:,0],'g.')
+
+        plt.subplot(1,4,3)
         io.imshow(binary)
         plt.gray()
         plt.plot(selected_candidates[1],selected_candidates[0],'ro')
@@ -148,7 +150,7 @@ def locate_bumps(image, radius=2, searchpoints=1000, display=False):
         plt.title('First Guess at Peak Locations:\n'+str(np.shape(selected_candidates[1])[0])+ 
                   ' candidates' )
 
-        plt.subplot(1,3,3)
+        plt.subplot(1,4,4)
         io.imshow(image)
         plt.plot(master_coords[:,0],master_coords[:,1],'ro')
         plt.title('Refined Peak Locations Shown on Raw Data:\n'+str(np.shape(final)[0])+ 
@@ -182,11 +184,12 @@ def batch_locate(directory='here'):
     for i in np.arange(0,len(filenames)):
         image_index = int(split('(\d+)',filenames[i].split(directory)[1])[1])
         print ('Image Number: ' + str(image_index))
-        coords = locate_bumps(filenames[i])
+        coords = locate_bumps(str(filenames[i]))
         if size(coords) > 0:
-            this_framecoords3D = np.zeros([len(coords),3])
-            this_framecoords3D[:,0:2] = coords
+            this_framecoords3D = np.zeros([len(coords),4])
+            this_framecoords3D[:,0:2] = coords[:,0:2]
             this_framecoords3D[:,2] = image_index
+            this_framecoords3D[:,3] = coords[:,2]
             if size(coords3D)==0:
                 coords3D = this_framecoords3D
             else:
